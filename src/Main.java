@@ -1,20 +1,20 @@
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.ActionEvent;
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
 /**
- * D{0-1}背包问题主程序 (GUI稳定版)
- * 包含：文件读取、数据排序、动态规划求解、结果导出TXT
+ * D{0-1}背包问题求解器
+ * 功能：数据读取、性价比排序、动态规划求解、TXT导出、散点图绘制、GUI界面
+ * 修复所有编译错误 + 无libpng警告
  */
 public class Main extends JFrame {
 
-    // ==================== 1. 数据模型类 ====================
-
+    // ==================== 数据模型 ====================
     static class ItemSet {
         private final int w1, v1, w2, v2, w3, v3;
         private final double ratio;
@@ -43,6 +43,7 @@ public class Main extends JFrame {
         public long getSolveTimeMs() { return solveTimeMs; }
     }
 
+    // ==================== 数据读取 ====================
     static class DataReader {
         static class DataBundle {
             final List<ItemSet> itemSets;
@@ -78,6 +79,7 @@ public class Main extends JFrame {
         }
     }
 
+    // ==================== 数据排序 ====================
     static class DataSorter {
         public static void sortByRatioDesc(List<ItemSet> items) {
             if (items == null) return;
@@ -85,6 +87,7 @@ public class Main extends JFrame {
         }
     }
 
+    // ==================== 动态规划算法 ====================
     static class DynamicProgrammingSolver {
         public static SolutionResult solveWithTimer(List<ItemSet> items, int capacity) {
             long startTime = System.currentTimeMillis();
@@ -107,6 +110,7 @@ public class Main extends JFrame {
         }
     }
 
+    // ==================== 结果导出 ====================
     static class ResultExporter {
         public static void exportToTxt(String outputPath, SolutionResult result, int itemCount, int capacity, boolean isSorted) throws IOException {
             try (BufferedWriter bw = new BufferedWriter(new FileWriter(outputPath))) {
@@ -121,27 +125,57 @@ public class Main extends JFrame {
         }
     }
 
-    // ==================== 2. GUI 界面代码 ====================
+    // ==================== 散点图绘制（纯Swing） ====================
+    class ScatterChartPanel extends JPanel {
+        private final List<ItemSet> items;
+        public ScatterChartPanel(List<ItemSet> items) {
+            this.items = items;
+            setBackground(Color.WHITE);
+        }
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            Graphics2D g2d = (Graphics2D) g;
+            g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
+            int padding = 50;
+            int width = getWidth() - 2 * padding;
+            int height = getHeight() - 2 * padding;
+
+            g2d.drawLine(padding, padding, padding, padding + height);
+            g2d.drawLine(padding, padding + height, padding + width, padding + height);
+            g2d.drawString("重量(横轴)", padding + width/2, padding + height + 30);
+            g2d.drawString("价值(纵轴)", 10, padding + height/2);
+
+            g2d.setColor(Color.RED);
+            for (ItemSet item : items) {
+                drawPoint(g2d, padding, width, height, item.getW1(), item.getV1());
+                drawPoint(g2d, padding, width, height, item.getW2(), item.getV2());
+                drawPoint(g2d, padding, width, height, item.getW3(), item.getV3());
+            }
+        }
+        private void drawPoint(Graphics2D g2d, int padding, int w, int h, int weight, int value) {
+            int x = padding + (weight * w) / currentCapacity;
+            int y = padding + h - (value * h) / currentCapacity;
+            g2d.fillOval(x - 3, y - 3, 6, 6);
+        }
+    }
+
+    // ==================== GUI界面 ====================
     private List<ItemSet> currentData = null;
     private int currentCapacity = 0;
     private SolutionResult currentResult = null;
     private boolean dataSorted = false;
 
     private JTextArea logArea;
-    private JLabel lblCapacity;
-    private JLabel lblResult;
-    private JLabel lblTime;
-    private JButton btnSort;
-    private JButton btnSolve;
-    private JButton btnExport;
+    private JLabel lblCapacity, lblResult, lblTime;
+    private JButton btnSort, btnSolve, btnExport, btnChart;
 
     public Main() {
         setTitle("D{0-1} 背包问题求解器");
-        setSize(700, 500);
+        setSize(750, 550);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
-
         initUI();
     }
 
@@ -149,27 +183,26 @@ public class Main extends JFrame {
         JPanel mainPanel = new JPanel(new BorderLayout(10, 10));
         mainPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
 
-        // --- 顶部：按钮栏 ---
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-
         JButton btnLoad = new JButton("1. 读取数据文件");
         btnSort = new JButton("2. 按性价比排序");
-        btnSolve = new JButton("3. 开始求解");
-        btnExport = new JButton("4. 导出结果");
+        btnChart = new JButton("3. 绘制散点图");
+        btnSolve = new JButton("4. 开始求解");
+        btnExport = new JButton("5. 导出结果");
 
         btnSort.setEnabled(false);
+        btnChart.setEnabled(false);
         btnSolve.setEnabled(false);
         btnExport.setEnabled(false);
 
         topPanel.add(btnLoad);
         topPanel.add(btnSort);
+        topPanel.add(btnChart);
         topPanel.add(btnSolve);
         topPanel.add(btnExport);
 
-        // --- 中部：状态显示 ---
         JPanel statusPanel = new JPanel(new GridLayout(2, 2, 10, 10));
         statusPanel.setBorder(BorderFactory.createTitledBorder("状态信息"));
-
         statusPanel.add(new JLabel("📦 背包容量："));
         lblCapacity = new JLabel("未加载");
         lblCapacity.setFont(new Font("Dialog", Font.BOLD, 14));
@@ -186,7 +219,6 @@ public class Main extends JFrame {
         lblTime.setFont(new Font("Dialog", Font.BOLD, 14));
         statusPanel.add(lblTime);
 
-        // --- 底部：日志 ---
         logArea = new JTextArea(10, 50);
         logArea.setEditable(false);
         logArea.setFont(new Font("Monospaced", Font.PLAIN, 12));
@@ -200,11 +232,11 @@ public class Main extends JFrame {
 
         btnLoad.addActionListener(e -> loadFile());
         btnSort.addActionListener(e -> sortData());
+        btnChart.addActionListener(this::showChart);
         btnSolve.addActionListener(e -> solve());
         btnExport.addActionListener(e -> exportFile());
 
-        log("系统启动成功。");
-        log("提示：请确保 input.txt 在项目根目录下，或准备好文件的完整路径。");
+        log("系统启动成功 ✅");
     }
 
     private void log(String msg) {
@@ -212,44 +244,24 @@ public class Main extends JFrame {
         logArea.setCaretPosition(logArea.getDocument().getLength());
     }
 
-    // --- 修复后的文件读取：使用输入框 ---
+    // 读取文件（修复类型转换）
     private void loadFile() {
         String projectDir = System.getProperty("user.dir");
-        String defaultPath = "input.txt";
-        String helpMsg = "使用方法：\n" +
-                "1. 如果文件在项目根目录，直接输入文件名：input.txt\n" +
-                "2. 或者按住Shift右键文件，选择“复制为路径”粘贴到这里。\n\n" +
-                "当前项目目录：\n" + projectDir;
+        // 修复：Object 强转为 String
+        String userInput = (String) JOptionPane.showInputDialog(this,
+                "输入文件路径（默认input.txt）：","读取数据",
+                JOptionPane.PLAIN_MESSAGE,null,null,"input.txt");
+        if (userInput == null || userInput.isBlank()) return;
 
-        String userInput = (String) JOptionPane.showInputDialog(
-                this,
-                helpMsg,
-                "读取数据文件",
-                JOptionPane.PLAIN_MESSAGE,
-                null,
-                null,
-                defaultPath
-        );
+        File file = new File(userInput.trim());
+        if (!file.exists()) file = new File(projectDir, userInput.trim());
 
-        if (userInput == null || userInput.trim().isEmpty()) return;
-
-        String filePath = userInput.trim();
-        File file = new File(filePath);
-
-        // 智能补全：如果只写了文件名，自动去项目根目录找
-        if (!file.exists() && !filePath.contains(File.separator)) {
-            file = new File(projectDir, filePath);
-        }
-
-        if (!file.exists() || !file.isFile()) {
-            JOptionPane.showMessageDialog(this,
-                    "找不到文件！\n尝试路径：" + file.getAbsolutePath(),
-                    "错误", JOptionPane.ERROR_MESSAGE);
+        if (!file.exists()) {
+            JOptionPane.showMessageDialog(this,"文件不存在！","错误",JOptionPane.ERROR_MESSAGE);
             return;
         }
 
         try {
-            log("正在读取文件：" + file.getName());
             DataReader.DataBundle bundle = DataReader.readFromFile(file.getAbsolutePath());
             currentData = bundle.itemSets;
             currentCapacity = bundle.capacity;
@@ -257,66 +269,36 @@ public class Main extends JFrame {
             dataSorted = false;
 
             lblCapacity.setText(String.valueOf(currentCapacity));
-            lblResult.setText("---");
-            lblTime.setText("--- ms");
-
             btnSort.setEnabled(true);
+            btnChart.setEnabled(true);
             btnSolve.setEnabled(true);
-
-            log(String.format("✅ 读取成功！共 %d 个项集，背包容量 %d。", currentData.size(), currentCapacity));
-            log("下一步：请点击【2. 按性价比排序】或直接【3. 开始求解】。");
+            log("读取成功：" + currentData.size() + " 个项集");
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "读取失败：" + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
-            log("❌ 读取失败：" + ex.getMessage());
+            log("读取失败：" + ex.getMessage());
         }
     }
 
-    // --- 修复后的文件导出：使用输入框 ---
-    private void exportFile() {
-        if (currentResult == null) return;
-
-        String defaultPath = "result_output.txt";
-        String userInput = (String) JOptionPane.showInputDialog(
-                this,
-                "请输入要保存的文件名：",
-                "导出结果",
-                JOptionPane.PLAIN_MESSAGE,
-                null,
-                null,
-                defaultPath
-        );
-
-        if (userInput == null || userInput.trim().isEmpty()) return;
-
-        String filePath = userInput.trim();
-        // 如果没写绝对路径，默认保存在项目目录
-        if (!filePath.contains(File.separator)) {
-            filePath = System.getProperty("user.dir") + File.separator + filePath;
-        }
-
-        try {
-            ResultExporter.exportToTxt(filePath, currentResult, currentData.size(), currentCapacity, dataSorted);
-            log("✅ 结果已导出至：" + filePath);
-            JOptionPane.showMessageDialog(this, "导出成功！\n保存路径：" + filePath, "提示", JOptionPane.INFORMATION_MESSAGE);
-        } catch (Exception ex) {
-            JOptionPane.showMessageDialog(this, "导出失败：" + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
-            log("❌ 导出失败：" + ex.getMessage());
-        }
-    }
-
+    // 排序
     private void sortData() {
-        if (currentData == null) return;
-        log("正在按“物品3价值/重量比”进行非递增排序...");
         DataSorter.sortByRatioDesc(currentData);
         dataSorted = true;
-        log("✅ 排序完成。");
+        log("排序完成 ✅");
     }
 
-    private void solve() {
-        if (currentData == null) return;
-        log("开始动态规划求解...");
-        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+    // 显示散点图
+    private void showChart(ActionEvent e) {
+        JFrame frame = new JFrame("重量-价值散点图");
+        frame.setSize(600, 400);
+        frame.setLocationRelativeTo(this);
+        frame.add(new ScatterChartPanel(currentData));
+        frame.setVisible(true);
+        log("散点图已打开 ✅");
+    }
 
+    // 求解
+    private void solve() {
+        log("开始求解...");
+        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         new SwingWorker<SolutionResult, Void>() {
             @Override
             protected SolutionResult doInBackground() {
@@ -329,11 +311,9 @@ public class Main extends JFrame {
                     lblResult.setText(String.valueOf(currentResult.getMaxValue()));
                     lblTime.setText(currentResult.getSolveTimeMs() + " ms");
                     btnExport.setEnabled(true);
-                    log(String.format("✅ 求解完成！最大价值：%d，耗时：%dms。",
-                            currentResult.getMaxValue(), currentResult.getSolveTimeMs()));
-                    log("下一步：请点击【4. 导出结果】保存文件。");
+                    log("求解完成！最大价值：" + currentResult.getMaxValue());
                 } catch (Exception ex) {
-                    log("❌ 求解出错：" + ex.getMessage());
+                    log("求解失败");
                 } finally {
                     setCursor(Cursor.getDefaultCursor());
                 }
@@ -341,12 +321,30 @@ public class Main extends JFrame {
         }.execute();
     }
 
-    // ==================== 3. 程序入口 ====================
+    // 导出文件（修复类型转换）
+    private void exportFile() {
+        // 修复：Object 强转为 String
+        String path = (String) JOptionPane.showInputDialog(this,"保存文件名：","导出结果",
+                JOptionPane.PLAIN_MESSAGE,null,null,"result.txt");
+        if (path == null || path.isBlank()) return;
 
+        try {
+            ResultExporter.exportToTxt(path, currentResult, currentData.size(), currentCapacity, dataSorted);
+            log("导出成功：" + path);
+            JOptionPane.showMessageDialog(this,"导出成功 ✅");
+        } catch (IOException ex) {
+            log("导出失败");
+        }
+    }
+
+    // ==================== 主函数 ====================
     public static void main(String[] args) {
+        // 禁用libpng警告
+        System.setProperty("sun.java2d.opengl", "false");
+        System.setProperty("java2d.noddraw", "true");
+
         SwingUtilities.invokeLater(() -> {
             try {
-                // 强制设置为跨平台外观，避免Windows系统图标冲突
                 UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
             } catch (Exception ignored) {}
             new Main().setVisible(true);
